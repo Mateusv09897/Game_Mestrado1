@@ -13,7 +13,7 @@ python -m venv .venv
 # macOS/Linux
 source .venv/bin/activate
 # Windows
-.venv\Scripts\activate
+.venv\\Scripts\\activate
 
 python -m pip install -r requirements.txt
 python main.py
@@ -31,4 +31,13 @@ python main.py
 | Voltar ao menu | `Esc` |
 | Tela cheia | `F11` |
 
-Os sprites são os arquivos aprovados e disponibilizados pela equipe na pasta do projeto. Cenário e interface são originais.
+## Estrutura de uma missão
+
+1. Caminhe pelo cenário e aproxime-se dos círculos brilhantes.
+2. Aperte `E` para ler e recolher cada pista.
+3. Depois de recolher todas, aperte `E` para abrir o desafio final.
+4. Responda corretamente para marcar a missão como concluída.
+
+## Créditos e uso dos assets
+
+Os sprites de cada pesquisadora são os arquivos aprovados e disponibilizados pela equipe na pasta do projeto. O cenário e a interface são originais; o jogo não reproduz assets, personagens ou interface de outros jogos.
