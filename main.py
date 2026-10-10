@@ -74,6 +74,7 @@ class Game:
         self.mini_selected, self.mini_matched, self.mini_progress = None, set(), 0
         self.rhythm_sequence = (pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT, pygame.K_UP, pygame.K_RIGHT, pygame.K_LEFT)
         self.animations, self.backgrounds = self.load_animations(), self.load_backgrounds()
+        self.action_sprites, self.action_name, self.action_time = self.load_action_sprites(), None, 0.0
         self.load_music()
 
     def load_animations(self):
@@ -93,6 +94,20 @@ class Game:
                 backgrounds[key] = pygame.image.load(path).convert()
         return backgrounds
 
+    def load_action_sprites(self):
+        """Ações fornecidas pela equipe: usadas como feedback real de cada missão."""
+        names = {
+            "water": ("lucilene", "lucilene_water_01.png"),
+            "dance": ("deuzilene", "deuzilene_dance_01.png"),
+            "map_ana": ("ana_claudia", "ana_claudia_map_01.png"),
+            "map_francisca": ("maria_francisca", "maria_francisca_map_01.png"),
+        }
+        actions = {}
+        for key, (researcher, filename) in names.items():
+            path = os.path.join(SPRITES_DIR, researcher, filename)
+            if os.path.exists(path): actions[key] = pygame.transform.scale(pygame.image.load(path).convert_alpha(), (128, 128))
+        return actions
+
     def load_music(self):
         """Toca uma trilha opcional quando o arquivo for adicionado ao projeto."""
         for filename in ("trilha.ogg", "trilha.mp3", "trilha.wav"):
@@ -111,13 +126,17 @@ class Game:
 
     def start_mission(self, index):
         self.active, self.state, self.player = index, "play", pygame.Vector2(150, 560)
-        self.collected, self.question_answer, self.notice, self.seconds, self.anim_frame = set(), None, "", 180.0, 0
+        self.collected, self.question_answer, self.notice, self.notice_time, self.seconds, self.anim_frame = set(), None, "", 0.0, 180.0, 0
         self.mini_selected, self.mini_matched, self.mini_progress = None, set(), 0
+        self.action_name, self.action_time = None, 0.0
 
     def hotspot_positions(self):
         return [(265, 355), (460, 250), (640, 420), (825, 260), (1035, 365)] if len(self.researcher.points) == 5 else [(290, 355), (650, 270), (1015, 385)]
 
     def show_notice(self, message): self.notice, self.notice_time = message, 5.0
+
+    def play_action(self, name, duration=.8):
+        self.action_name, self.action_time = name, duration
 
     def canvas_mouse(self, position):
         screen_w, screen_h = self.screen.get_size()
@@ -137,7 +156,9 @@ class Game:
     def interact(self):
         for index, (position, item) in enumerate(zip(self.hotspot_positions(), self.researcher.points)):
             if index not in self.collected and self.player.distance_to(position) < 80:
-                self.collected.add(index); self.show_notice(f"{item[0]}: {item[1]}"); return
+                self.collected.add(index); self.show_notice(f"{item[0]}: {item[1]}")
+                if self.researcher.key == "lucilene": self.play_action("water", 1.1)
+                return
         if len(self.collected) == len(self.researcher.points): self.state = "minigame"
         else: self.show_notice("Aproxime-se de um ponto brilhante e aperte E.")
 
@@ -184,6 +205,10 @@ class Game:
         if self.state != "play": return
         self.seconds = max(0, self.seconds - dt)
         if not self.seconds: self.state = "timeout"; return
+        if self.action_time:
+            self.action_time = max(0, self.action_time - dt)
+            if not self.action_time: self.action_name = None
+            return
         k = pygame.key.get_pressed(); direction = pygame.Vector2(int(k[pygame.K_d] or k[pygame.K_RIGHT]) - int(k[pygame.K_a] or k[pygame.K_LEFT]), int(k[pygame.K_s] or k[pygame.K_DOWN]) - int(k[pygame.K_w] or k[pygame.K_UP]))
         if direction.length_squared():
             self.player += direction.normalize() * 260 * dt; self.player.x = max(65, min(WIDTH - 65, self.player.x)); self.player.y = max(190, min(HEIGHT - 95, self.player.y))
@@ -257,6 +282,20 @@ class Game:
             if scale != 1: image = pygame.transform.smoothscale(image, (int(128 * scale), int(128 * scale)))
             self.canvas.blit(image, image.get_rect(midbottom=(x, y)))
 
+    def action_avatar(self, x, y, name, *, scale=1):
+        image = self.action_sprites.get(name)
+        if image:
+            if scale != 1: image = pygame.transform.smoothscale(image, (int(128 * scale), int(128 * scale)))
+            self.canvas.blit(image, image.get_rect(midbottom=(x, y)))
+
+    def draw_grown_plant(self, position):
+        x, y = position
+        pygame.draw.ellipse(self.canvas, (110, 72, 40), (x - 24, y + 13, 48, 12))
+        pygame.draw.rect(self.canvas, (58, 112, 57), (x - 3, y - 6, 6, 24))
+        pygame.draw.ellipse(self.canvas, LEAF, (x - 20, y - 10, 21, 13))
+        pygame.draw.ellipse(self.canvas, LEAF, (x - 1, y - 17, 21, 14))
+        pygame.draw.circle(self.canvas, (247, 190, 67), (x + 4, y - 18), 6)
+
     def bubble(self, x, y, content, *, width=330):
         x = max(width // 2 + 14, min(WIDTH - width // 2 - 14, x))
         panel(self.canvas, pygame.Rect(x - width // 2, y, width, 66), (250, 249, 236), 13)
@@ -307,6 +346,8 @@ class Game:
         text(self.canvas, "MINIDESAFIO: CONECTE AS PISTAS", 31, GOLD, 640, 116, center=True, bold=True)
         text(self.canvas, "Clique em uma pista e depois na ação que completa a investigação.", 18, WHITE, 640, 161, center=True)
         text(self.canvas, "PISTAS", 18, (215, 238, 223), 300, 205, center=True, bold=True); text(self.canvas, "AÇÕES", 18, (215, 238, 223), 975, 205, center=True, bold=True)
+        action_name = {"lucilene": "water", "ana_claudia": "map_ana", "maria_francisca": "map_francisca"}.get(self.researcher.key)
+        if action_name: self.action_avatar(640, 432, action_name, scale=.92)
         for index, (source, _) in enumerate(pairs):
             y = 238 + index * 105; selected = self.mini_selected == index; done = index in self.mini_matched
             color = LEAF if done else (self.researcher.color if selected else (42, 82, 83))
@@ -325,6 +366,7 @@ class Game:
         arrows = {pygame.K_LEFT: "←", pygame.K_RIGHT: "→", pygame.K_UP: "↑", pygame.K_DOWN: "↓"}
         panel(self.canvas, pygame.Rect(110, 120, 1060, 470), PANEL, 28)
         text(self.canvas, "MINIDESAFIO: RITMO E CÓDIGO", 33, GOLD, 640, 165, center=True, bold=True)
+        self.action_avatar(210, 255, "dance", scale=.72)
         text(self.canvas, "Repita a sequência usando as setas. Cada acerto faz a investigação avançar.", 19, WHITE, 640, 212, center=True)
         start_x = 365
         for index, key in enumerate(self.rhythm_sequence):
@@ -362,7 +404,11 @@ class Game:
         text(self.canvas, self.researcher.place.upper(), 24, WHITE, 640, 94, center=True, bold=True); text(self.canvas, self.researcher.goal, 16, (223, 242, 224), 640, 126, center=True, max_width=850)
         for index, (pos, point) in enumerate(zip(self.hotspot_positions(), self.researcher.points)):
             if index not in self.collected: self.draw_hotspot(pos, point[0], index)
-        k = pygame.key.get_pressed(); self.avatar(int(self.player.x), int(self.player.y), self.researcher, walking=int(k[pygame.K_d] or k[pygame.K_RIGHT]) - int(k[pygame.K_a] or k[pygame.K_LEFT]))
+        if self.researcher.key == "lucilene":
+            for index in self.collected: self.draw_grown_plant(self.hotspot_positions()[index])
+        k = pygame.key.get_pressed()
+        if self.action_time and self.action_name: self.action_avatar(int(self.player.x), int(self.player.y), self.action_name)
+        else: self.avatar(int(self.player.x), int(self.player.y), self.researcher, walking=int(k[pygame.K_d] or k[pygame.K_RIGHT]) - int(k[pygame.K_a] or k[pygame.K_LEFT]))
         panel(self.canvas, pygame.Rect(28, 650, 330, 42), (3, 35, 38, 224), 12); text(self.canvas, f"PISTAS {len(self.collected)}/{len(self.researcher.points)}", 16, WHITE, 47, 662, bold=True); self.footer("WASD / SETAS: MOVER  |  E: INVESTIGAR  |  CLIQUE: SELECIONAR")
         closest = self.nearest_hotspot()
         if self.notice_time: self.bubble(int(self.player.x), int(self.player.y) - 175, self.notice, width=420)
