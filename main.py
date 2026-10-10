@@ -1,4 +1,4 @@
-"""Pesquisadoras em Jogo — exploração individual curta e educativa.
+"""Pesquisadoras em Ação — exploração individual curta e educativa.
 Controles: WASD/setas movimentam | E interage | 1-4 escolhem personagem.
 """
 from __future__ import annotations
@@ -16,6 +16,7 @@ WHITE, INK = (247, 250, 247), (17, 38, 42)
 GREEN, LEAF, RIVER, SKY = (24, 111, 74), (103, 184, 105), (55, 157, 190), (176, 225, 238)
 GOLD, CORAL, PURPLE, PANEL = (247, 190, 67), (232, 99, 88), (118, 84, 154), (8, 42, 47, 232)
 SPRITES_DIR = os.path.join(os.path.dirname(__file__), "assets", "sprites")
+BACKGROUNDS_DIR = os.path.join(os.path.dirname(__file__), "assets", "backgrounds")
 
 
 @dataclass(frozen=True)
@@ -63,14 +64,14 @@ def panel(surface, rect, color=PANEL, radius=18):
 
 class Game:
     def __init__(self):
-        pygame.init(); pygame.display.set_caption("Pesquisadoras em Jogo — IFAM")
+        pygame.init(); pygame.display.set_caption("Pesquisadoras em Ação — IFAM")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
         self.canvas, self.clock = pygame.Surface((WIDTH, HEIGHT)), pygame.time.Clock()
         self.running, self.fullscreen, self.state = True, False, "title"
         self.selection, self.active, self.player = 0, None, pygame.Vector2(150, 560)
         self.collected, self.notice, self.notice_time, self.question_answer = set(), "", 0.0, None
         self.seconds, self.frame_time, self.anim_frame, self.completed = 180.0, 0.0, 0, set()
-        self.animations = self.load_animations()
+        self.animations, self.backgrounds = self.load_animations(), self.load_backgrounds()
 
     def load_animations(self):
         animations = {}
@@ -80,6 +81,14 @@ class Game:
                 paths = sorted(glob.glob(os.path.join(SPRITES_DIR, researcher.key, action, "*.png")))
                 animations[researcher.key][action] = [pygame.transform.scale(pygame.image.load(path).convert_alpha(), (128, 128)) for path in paths]
         return animations
+
+    def load_backgrounds(self):
+        backgrounds = {}
+        for key, filename in (("facade", "ifam_cmc_fachada_8bit.jpg"), ("aerial", "ifam_cmc_aereo_8bit.jpg")):
+            path = os.path.join(BACKGROUNDS_DIR, filename)
+            if os.path.exists(path):
+                backgrounds[key] = pygame.image.load(path).convert()
+        return backgrounds
 
     @property
     def researcher(self): return RESEARCHERS[self.active]
@@ -133,7 +142,11 @@ class Game:
             if self.question_answer == self.researcher.correct: self.completed.add(self.active)
         elif self.state in ("result", "timeout") and event.key in (pygame.K_RETURN, pygame.K_SPACE): self.state = "select"
 
-    def background(self):
+    def background(self, mode="facade"):
+        source = self.backgrounds.get(mode)
+        if source:
+            self.canvas.blit(pygame.transform.smoothscale(source, (WIDTH, HEIGHT)), (0, 0))
+            return
         self.canvas.fill(SKY); pygame.draw.circle(self.canvas, (255, 239, 181), (1090, 105), 58)
         pygame.draw.polygon(self.canvas, (83, 151, 99), [(0, 330), (210, 205), (460, 350), (710, 210), (970, 345), (1280, 220), (1280, 520), (0, 520)])
         pygame.draw.rect(self.canvas, (92, 151, 92), (0, 485, WIDTH, 235)); pygame.draw.rect(self.canvas, (207, 178, 117), (0, 555, WIDTH, 165))
@@ -155,7 +168,7 @@ class Game:
 
     def draw_title(self):
         veil = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA); veil.fill((4, 29, 35, 125)); self.canvas.blit(veil, (0, 0)); panel(self.canvas, pygame.Rect(135, 122, 1010, 450), PANEL, 30)
-        text(self.canvas, "PESQUISADORAS", 62, WHITE, 640, 175, center=True, bold=True); text(self.canvas, "EM JOGO", 62, GOLD, 640, 245, center=True, bold=True)
+        text(self.canvas, "PESQUISADORAS", 62, WHITE, 640, 175, center=True, bold=True); text(self.canvas, "EM AÇÃO", 62, GOLD, 640, 245, center=True, bold=True)
         text(self.canvas, "Explore o campus, encontre pistas e faça ciência acontecer.", 25, WHITE, 640, 338, center=True); text(self.canvas, "Cada missão dura até 3 minutos e tem um desafio de conhecimento no final.", 19, (214, 235, 221), 640, 385, center=True)
         for i, researcher in enumerate(RESEARCHERS): self.avatar(285 + i * 235, 505, researcher, scale=.78)
         self.footer("ENTER: ESCOLHER UMA PESQUISADORA")
@@ -168,7 +181,7 @@ class Game:
         self.footer("← → ou 1–4: ESCOLHER  |  ENTER: INICIAR")
 
     def draw_hud(self):
-        panel(self.canvas, pygame.Rect(20, 18, 1240, 58), PANEL, 16); text(self.canvas, "PESQUISADORAS EM JOGO", 23, WHITE, 42, 33, bold=True); text(self.canvas, self.researcher.name.upper(), 19, self.researcher.color, 540, 35, bold=True)
+        panel(self.canvas, pygame.Rect(20, 18, 1240, 58), PANEL, 16); text(self.canvas, "PESQUISADORAS EM AÇÃO", 23, WHITE, 42, 33, bold=True); text(self.canvas, self.researcher.name.upper(), 19, self.researcher.color, 540, 35, bold=True)
         minutes, seconds = divmod(int(math.ceil(self.seconds)), 60); text(self.canvas, f"TEMPO  {minutes}:{seconds:02d}", 21, GOLD, 1065, 33, bold=True)
 
     def draw_play(self):
@@ -195,7 +208,7 @@ class Game:
         panel(self.canvas, pygame.Rect(190, 200, 900, 300), PANEL, 28); text(self.canvas, "O TEMPO DESTA MISSÃO TERMINOU", 32, GOLD, 640, 254, center=True, bold=True); text(self.canvas, "Sem problema: cada pesquisadora pode ser explorada novamente. Agora você já sabe onde estão as pistas.", 21, WHITE, 640, 330, center=True, max_width=710); self.footer("ENTER: VOLTAR ÀS MISSÕES")
 
     def draw(self):
-        self.background()
+        self.background("aerial" if self.state == "title" else "facade")
         if self.state == "title": self.draw_title()
         elif self.state == "select": self.draw_select()
         elif self.state == "play": self.draw_play()

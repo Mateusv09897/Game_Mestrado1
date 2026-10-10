@@ -1,6 +1,6 @@
-# Pesquisadoras em Jogo
+# Pesquisadoras em Ação
 
-Jogo educativo em Pygame para a SNCT/IFAM. Cada estudante escolhe uma pesquisadora e vive uma missão curta de exploração no campus ilustrado.
+Jogo educativo em Pygame para a SNCT/IFAM. Cada estudante escolhe uma pesquisadora e vive uma missão curta de exploração no Campus Manaus Centro ilustrado em pixel art.
 
 As fases têm até **3 minutos**, movimentação, pontos interativos e uma pergunta final. As missões apresentam Lucilene (Botânica), Deuzilene (educação, arte e tecnologia), Ana Cláudia (memória e formação) e Francisca (linguagem, extensão e equidade).
 
