@@ -33,10 +33,11 @@ python main.py
 
 ## Estrutura de uma missão
 
-1. Caminhe pelo cenário e aproxime-se dos círculos brilhantes.
-2. Aperte `E` para ler e recolher cada pista.
-3. Depois de recolher todas, aperte `E` para abrir o desafio final.
-4. Responda corretamente para marcar a missão como concluída.
+1. Caminhe pelo cenário e aproxime-se dos objetos brilhantes.
+2. Aperte `E` para investigar cada pista.
+3. Depois de recolher todas, aperte `E` para abrir o minidesafio da pesquisadora.
+4. Conclua a associação de pistas (ou a sequência de ritmo e código da Deuzilene).
+5. Responda ao desafio final para marcar a missão como concluída.
 
 ## Trilha sonora
 

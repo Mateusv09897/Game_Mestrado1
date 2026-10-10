@@ -71,6 +71,8 @@ class Game:
         self.selection, self.active, self.player = 0, None, pygame.Vector2(150, 560)
         self.collected, self.notice, self.notice_time, self.question_answer = set(), "", 0.0, None
         self.seconds, self.frame_time, self.anim_frame, self.completed = 180.0, 0.0, 0, set()
+        self.mini_selected, self.mini_matched, self.mini_progress = None, set(), 0
+        self.rhythm_sequence = (pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT, pygame.K_UP, pygame.K_RIGHT, pygame.K_LEFT)
         self.animations, self.backgrounds = self.load_animations(), self.load_backgrounds()
         self.load_music()
 
@@ -110,6 +112,7 @@ class Game:
     def start_mission(self, index):
         self.active, self.state, self.player = index, "play", pygame.Vector2(150, 560)
         self.collected, self.question_answer, self.notice, self.seconds, self.anim_frame = set(), None, "", 180.0, 0
+        self.mini_selected, self.mini_matched, self.mini_progress = None, set(), 0
 
     def hotspot_positions(self):
         return [(265, 355), (460, 250), (640, 420), (825, 260), (1035, 365)] if len(self.researcher.points) == 5 else [(290, 355), (650, 270), (1015, 385)]
@@ -135,8 +138,46 @@ class Game:
         for index, (position, item) in enumerate(zip(self.hotspot_positions(), self.researcher.points)):
             if index not in self.collected and self.player.distance_to(position) < 80:
                 self.collected.add(index); self.show_notice(f"{item[0]}: {item[1]}"); return
-        if len(self.collected) == len(self.researcher.points): self.state = "question"
+        if len(self.collected) == len(self.researcher.points): self.state = "minigame"
         else: self.show_notice("Aproxime-se de um ponto brilhante e aperte E.")
+
+    def mini_pairs(self):
+        """Pares para os minidesafios de associação, após a exploração."""
+        pairs = {
+            "lucilene": (("SEMENTES", "PLANTAR"), ("ÁGUA", "CULTIVAR"), ("CADERNO", "REGISTRAR")),
+            "ana_claudia": (("DOCUMENTO", "CONSULTAR FONTE"), ("MAPA", "REDESENHAR ROTA"), ("LIVRO", "COMPARTILHAR")),
+            "maria_francisca": (("LINGUAGEM", "ESCUTAR"), ("EXTENSÃO", "DIALOGAR"), ("EQUIDADE", "ACOLHER")),
+        }
+        return pairs.get(self.researcher.key, ())
+
+    def matching_click(self, mouse):
+        pairs = self.mini_pairs()
+        for index in range(len(pairs)):
+            if pygame.Rect(135, 238 + index * 105, 335, 74).collidepoint(mouse):
+                if index not in self.mini_matched:
+                    self.mini_selected = index; self.show_notice(f"{pairs[index][0].title()} selecionado. Agora escolha a ação.")
+                return
+        target_order = (2, 0, 1)
+        for slot, source_index in enumerate(target_order):
+            if pygame.Rect(810, 238 + slot * 105, 335, 74).collidepoint(mouse):
+                if self.mini_selected is None:
+                    self.show_notice("Primeiro selecione um item à esquerda.")
+                elif self.mini_selected == source_index:
+                    self.mini_matched.add(source_index); self.mini_selected = None
+                    self.show_notice("Boa associação!")
+                    if len(self.mini_matched) == len(pairs): self.state = "question"
+                else:
+                    self.show_notice("Tente outra ação: pense no que essa pista permite fazer.")
+                return
+
+    def rhythm_input(self, key):
+        if key not in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN): return
+        if key == self.rhythm_sequence[self.mini_progress]:
+            self.mini_progress += 1
+            self.show_notice("No ritmo certo!")
+            if self.mini_progress == len(self.rhythm_sequence): self.state = "question"
+        else:
+            self.mini_progress = 0; self.show_notice("Ops! A sequência recomeçou. Observe as setas.")
 
     def update(self, dt):
         if self.notice_time: self.notice_time = max(0, self.notice_time - dt)
@@ -168,6 +209,8 @@ class Game:
                         if self.player.distance_to(position) < 100: self.interact()
                         else: self.show_notice("Caminhe até este elemento e aperte E para investigá-lo.")
                         return
+            if self.state == "minigame" and self.researcher.key != "deuzilene":
+                self.matching_click(mouse); return
             if self.state == "question":
                 for index in range(3):
                     if pygame.Rect(205, 330 + index * 78, 870, 58).collidepoint(mouse): self.answer_question(index); return
@@ -176,7 +219,7 @@ class Game:
         if event.key == pygame.K_F11:
             self.fullscreen = not self.fullscreen; self.screen = pygame.display.set_mode((0, 0) if self.fullscreen else (WIDTH, HEIGHT), pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE); return
         if event.key == pygame.K_ESCAPE:
-            if self.state in ("play", "question", "timeout", "result"): self.state = "select"
+            if self.state in ("play", "minigame", "question", "timeout", "result"): self.state = "select"
             else: self.running = False
             return
         if self.state == "title" and event.key in (pygame.K_RETURN, pygame.K_SPACE): self.state = "select"
@@ -186,6 +229,7 @@ class Game:
             elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4): self.selection = event.key - pygame.K_1
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE): self.start_mission(self.selection)
         elif self.state == "play" and event.key == pygame.K_e: self.interact()
+        elif self.state == "minigame" and self.researcher.key == "deuzilene": self.rhythm_input(event.key)
         elif self.state == "question" and event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
             self.answer_question(event.key - pygame.K_1)
         elif self.state in ("result", "timeout") and event.key in (pygame.K_RETURN, pygame.K_SPACE): self.state = "select"
@@ -207,7 +251,9 @@ class Game:
         action = "idle" if not walking else ("walk_right" if walking > 0 else "walk_left")
         frames = self.animations[researcher.key].get(action) or self.animations[researcher.key]["idle"]
         if frames:
-            image = frames[self.anim_frame % len(frames)]
+            # O primeiro idle é o retrato frontal aprovado. Não reutilizamos um
+            # quadro lateral/traseiro depois da caminhada, que escondia olhos/cabelo.
+            image = frames[0] if not walking else frames[self.anim_frame % len(frames)]
             if scale != 1: image = pygame.transform.smoothscale(image, (int(128 * scale), int(128 * scale)))
             self.canvas.blit(image, image.get_rect(midbottom=(x, y)))
 
@@ -221,13 +267,77 @@ class Game:
         x, y = position; pulse = int(5 * math.sin(pygame.time.get_ticks() / 160 + index))
         pygame.draw.circle(self.canvas, (255, 239, 117), (x, y), 37 + pulse)
         panel(self.canvas, pygame.Rect(x - 26, y - 26, 52, 52), (26, 80, 70), 13)
-        pygame.draw.circle(self.canvas, self.researcher.color, (x, y), 18)
-        text(self.canvas, "!", 24, WHITE, x, y - 14, center=True, bold=True)
+        self.draw_item_icon(x, y, label)
         panel(self.canvas, pygame.Rect(x - 70, y - 63, 140, 28), (3, 39, 42, 230), 9)
         text(self.canvas, label.upper(), 14, WHITE, x, y - 58, center=True, bold=True)
 
+    def draw_item_icon(self, x, y, label):
+        """Pequenos objetos pixelados desenhados no próprio jogo, sem asset extra."""
+        name = label.lower()
+        if name == "sementes":
+            for dx, dy in ((-8, 5), (2, -4), (9, 8)): pygame.draw.ellipse(self.canvas, (120, 72, 35), (x + dx - 5, y + dy - 4, 10, 8))
+        elif name == "água":
+            pygame.draw.polygon(self.canvas, RIVER, [(x, y - 16), (x - 12, y + 8), (x, y + 17), (x + 12, y + 8)])
+        elif name in ("caderno", "livro", "documento"):
+            pygame.draw.rect(self.canvas, (245, 239, 192), (x - 13, y - 15, 26, 31), border_radius=3)
+            pygame.draw.line(self.canvas, self.researcher.color, (x - 8, y - 6), (x + 8, y - 6), 2)
+            pygame.draw.line(self.canvas, self.researcher.color, (x - 8, y + 2), (x + 8, y + 2), 2)
+        elif name == "mapa":
+            pygame.draw.polygon(self.canvas, (231, 216, 161), [(x - 16, y - 12), (x - 4, y - 16), (x + 5, y - 10), (x + 16, y - 14), (x + 13, y + 14), (x + 2, y + 10), (x - 8, y + 15), (x - 16, y + 10)])
+            pygame.draw.line(self.canvas, RIVER, (x - 4, y - 13), (x - 8, y + 12), 2)
+            pygame.draw.line(self.canvas, RIVER, (x + 5, y - 10), (x + 2, y + 10), 2)
+        elif name in ("código", "linguagem"):
+            panel(self.canvas, pygame.Rect(x - 17, y - 12, 34, 24), (103, 184, 105), 6)
+            text(self.canvas, "</>" if name == "código" else "…", 13, INK, x, y - 8, center=True, bold=True)
+        elif name == "ritmo":
+            text(self.canvas, "♪", 34, GOLD, x, y - 20, center=True, bold=True)
+        elif name == "extensão":
+            pygame.draw.circle(self.canvas, GOLD, (x - 8, y - 3), 6); pygame.draw.circle(self.canvas, GOLD, (x + 8, y - 3), 6)
+            pygame.draw.line(self.canvas, GOLD, (x - 2, y + 8), (x + 2, y + 8), 4)
+        else:
+            pygame.draw.circle(self.canvas, self.researcher.color, (x, y), 18)
+            text(self.canvas, "!", 24, WHITE, x, y - 14, center=True, bold=True)
+
     def footer(self, label):
         panel(self.canvas, pygame.Rect(245, 674, 790, 32), (2, 30, 33, 225), 10); text(self.canvas, label, 14, WHITE, 640, 682, center=True, bold=True)
+
+    def draw_matching_minigame(self):
+        pairs, target_order = self.mini_pairs(), (2, 0, 1)
+        panel(self.canvas, pygame.Rect(70, 82, 1140, 555), PANEL, 26)
+        text(self.canvas, "MINIDESAFIO: CONECTE AS PISTAS", 31, GOLD, 640, 116, center=True, bold=True)
+        text(self.canvas, "Clique em uma pista e depois na ação que completa a investigação.", 18, WHITE, 640, 161, center=True)
+        text(self.canvas, "PISTAS", 18, (215, 238, 223), 300, 205, center=True, bold=True); text(self.canvas, "AÇÕES", 18, (215, 238, 223), 975, 205, center=True, bold=True)
+        for index, (source, _) in enumerate(pairs):
+            y = 238 + index * 105; selected = self.mini_selected == index; done = index in self.mini_matched
+            color = LEAF if done else (self.researcher.color if selected else (42, 82, 83))
+            panel(self.canvas, pygame.Rect(135, y, 335, 74), color, 16)
+            text(self.canvas, "✓" if done else source[:1], 28, INK if (done or selected) else GOLD, 165, y + 19, bold=True)
+            text(self.canvas, source, 20, INK if (done or selected) else WHITE, 210, y + 25, bold=True)
+        for slot, source_index in enumerate(target_order):
+            y = 238 + slot * 105; done = source_index in self.mini_matched
+            panel(self.canvas, pygame.Rect(810, y, 335, 74), LEAF if done else (42, 82, 83), 16)
+            text(self.canvas, "✓" if done else "→", 25, INK if done else GOLD, 840, y + 20, bold=True)
+            text(self.canvas, pairs[source_index][1], 19, INK if done else WHITE, 883, y + 26, bold=True)
+        if self.notice_time: self.bubble(640, 530, self.notice, width=500)
+        self.footer("CLIQUE EM UMA PISTA E NA AÇÃO CORRESPONDENTE  |  ESC: VOLTAR ÀS MISSÕES")
+
+    def draw_rhythm_minigame(self):
+        arrows = {pygame.K_LEFT: "←", pygame.K_RIGHT: "→", pygame.K_UP: "↑", pygame.K_DOWN: "↓"}
+        panel(self.canvas, pygame.Rect(110, 120, 1060, 470), PANEL, 28)
+        text(self.canvas, "MINIDESAFIO: RITMO E CÓDIGO", 33, GOLD, 640, 165, center=True, bold=True)
+        text(self.canvas, "Repita a sequência usando as setas. Cada acerto faz a investigação avançar.", 19, WHITE, 640, 212, center=True)
+        start_x = 365
+        for index, key in enumerate(self.rhythm_sequence):
+            x = start_x + index * 110; active = index == self.mini_progress; done = index < self.mini_progress
+            panel(self.canvas, pygame.Rect(x, 300, 78, 78), LEAF if done else (self.researcher.color if active else (42, 82, 83)), 16)
+            text(self.canvas, "✓" if done else arrows[key], 39, INK if (done or active) else WHITE, x + 39, 315, center=True, bold=True)
+        text(self.canvas, f"SEQUÊNCIA {self.mini_progress}/{len(self.rhythm_sequence)}", 21, (215, 238, 223), 640, 432, center=True, bold=True)
+        if self.notice_time: self.bubble(640, 472, self.notice, width=510)
+        self.footer("USE AS SETAS DO TECLADO  |  ESC: VOLTAR ÀS MISSÕES")
+
+    def draw_minigame(self):
+        if self.researcher.key == "deuzilene": self.draw_rhythm_minigame()
+        else: self.draw_matching_minigame()
 
     def draw_title(self):
         veil = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA); veil.fill((4, 29, 35, 125)); self.canvas.blit(veil, (0, 0)); panel(self.canvas, pygame.Rect(135, 122, 1010, 450), PANEL, 30)
@@ -258,7 +368,7 @@ class Game:
         if self.notice_time: self.bubble(int(self.player.x), int(self.player.y) - 175, self.notice, width=420)
         elif closest and self.player.distance_to(closest[1]) < 155: self.bubble(int(self.player.x), int(self.player.y) - 175, f"Vamos investigar {closest[2][0]}. Aperte E!", width=330)
         elif not self.collected: self.bubble(int(self.player.x), int(self.player.y) - 175, "Siga os marcadores com ! amarelo.", width=300)
-        if len(self.collected) == len(self.researcher.points): text(self.canvas, "PISTAS REUNIDAS — APERTE E PARA O DESAFIO", 17, GOLD, 640, 615, center=True, bold=True)
+        if len(self.collected) == len(self.researcher.points): text(self.canvas, "PISTAS REUNIDAS — APERTE E PARA O MINIDESAFIO", 17, GOLD, 640, 615, center=True, bold=True)
 
     def draw_question(self):
         self.draw_hud(); panel(self.canvas, pygame.Rect(130, 118, 1020, 495), PANEL, 25); text(self.canvas, "DESAFIO DE CONHECIMENTO", 20, GOLD, 640, 155, center=True, bold=True); text(self.canvas, self.researcher.question, 31, WHITE, 640, 200, center=True, bold=True, max_width=850)
@@ -278,6 +388,7 @@ class Game:
         if self.state == "title": self.draw_title()
         elif self.state == "select": self.draw_select()
         elif self.state == "play": self.draw_play()
+        elif self.state == "minigame": self.draw_minigame()
         elif self.state == "question": self.draw_question()
         elif self.state == "result": self.draw_result()
         elif self.state == "timeout": self.draw_timeout()
