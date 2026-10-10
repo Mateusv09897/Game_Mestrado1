@@ -40,7 +40,7 @@ python main.py
 
 ## Trilha sonora
 
-Depois de gerar a música, salve-a como `assets/music/trilha.ogg` (formato recomendado). O jogo toca automaticamente `trilha.ogg`, `trilha.mp3` ou `trilha.wav` em loop.
+A trilha instrumental do projeto já está incluída em `assets/music/trilha.ogg` e é tocada automaticamente em loop, com volume moderado. Para substituí-la no futuro, mantenha o nome `trilha.ogg` (formato recomendado); `trilha.mp3` ou `trilha.wav` também funcionam.
 
 ## Créditos e uso dos assets
 
