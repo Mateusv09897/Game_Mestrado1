@@ -27,7 +27,7 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --noconfirm --clean --windowed --name Pesquisadoras_em_Acao --add-data "assets;assets" main.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name Pesquisadoras_em_Acao --add-data "assets;assets" main.py
 
       - name: Publish executable
         uses: actions/upload-artifact@v4
