@@ -72,6 +72,7 @@ class Game:
         self.collected, self.notice, self.notice_time, self.question_answer = set(), "", 0.0, None
         self.seconds, self.frame_time, self.anim_frame, self.completed = 180.0, 0.0, 0, set()
         self.animations, self.backgrounds = self.load_animations(), self.load_backgrounds()
+        self.load_music()
 
     def load_animations(self):
         animations = {}
@@ -90,6 +91,19 @@ class Game:
                 backgrounds[key] = pygame.image.load(path).convert()
         return backgrounds
 
+    def load_music(self):
+        """Toca uma trilha opcional quando o arquivo for adicionado ao projeto."""
+        for filename in ("trilha.ogg", "trilha.mp3", "trilha.wav"):
+            path = os.path.join(os.path.dirname(__file__), "assets", "music", filename)
+            if os.path.exists(path):
+                try:
+                    pygame.mixer.music.load(path)
+                    pygame.mixer.music.set_volume(0.32)
+                    pygame.mixer.music.play(-1)
+                except pygame.error:
+                    pass
+                return
+
     @property
     def researcher(self): return RESEARCHERS[self.active]
 
@@ -101,6 +115,21 @@ class Game:
         return [(265, 355), (460, 250), (640, 420), (825, 260), (1035, 365)] if len(self.researcher.points) == 5 else [(290, 355), (650, 270), (1015, 385)]
 
     def show_notice(self, message): self.notice, self.notice_time = message, 5.0
+
+    def canvas_mouse(self, position):
+        screen_w, screen_h = self.screen.get_size()
+        return pygame.Vector2(position[0] * WIDTH / screen_w, position[1] * HEIGHT / screen_h)
+
+    def card_rect(self, index):
+        return pygame.Rect(115 + index * 275, 232, 240, 290)
+
+    def nearest_hotspot(self):
+        candidates = [(index, pygame.Vector2(position), item) for index, (position, item) in enumerate(zip(self.hotspot_positions(), self.researcher.points)) if index not in self.collected]
+        return min(candidates, key=lambda candidate: self.player.distance_to(candidate[1])) if candidates else None
+
+    def answer_question(self, index):
+        self.question_answer, self.state = index, "result"
+        if index == self.researcher.correct: self.completed.add(self.active)
 
     def interact(self):
         for index, (position, item) in enumerate(zip(self.hotspot_positions(), self.researcher.points)):
@@ -123,6 +152,26 @@ class Game:
     def handle_event(self, event):
         if event.type == pygame.QUIT: self.running = False
         if event.type == pygame.VIDEORESIZE and not self.fullscreen: self.screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
+        if event.type == pygame.MOUSEMOTION and self.state == "select":
+            mouse = self.canvas_mouse(event.pos)
+            for index in range(len(RESEARCHERS)):
+                if self.card_rect(index).collidepoint(mouse): self.selection = index
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mouse = self.canvas_mouse(event.pos)
+            if self.state == "title": self.state = "select"; return
+            if self.state == "select":
+                for index in range(len(RESEARCHERS)):
+                    if self.card_rect(index).collidepoint(mouse): self.start_mission(index); return
+            if self.state == "play":
+                for index, position in enumerate(self.hotspot_positions()):
+                    if index not in self.collected and mouse.distance_to(position) < 55:
+                        if self.player.distance_to(position) < 100: self.interact()
+                        else: self.show_notice("Caminhe até este elemento e aperte E para investigá-lo.")
+                        return
+            if self.state == "question":
+                for index in range(3):
+                    if pygame.Rect(205, 330 + index * 78, 870, 58).collidepoint(mouse): self.answer_question(index); return
+            if self.state in ("result", "timeout"): self.state = "select"; return
         if event.type != pygame.KEYDOWN: return
         if event.key == pygame.K_F11:
             self.fullscreen = not self.fullscreen; self.screen = pygame.display.set_mode((0, 0) if self.fullscreen else (WIDTH, HEIGHT), pygame.FULLSCREEN if self.fullscreen else pygame.RESIZABLE); return
@@ -138,8 +187,7 @@ class Game:
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE): self.start_mission(self.selection)
         elif self.state == "play" and event.key == pygame.K_e: self.interact()
         elif self.state == "question" and event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
-            self.question_answer, self.state = event.key - pygame.K_1, "result"
-            if self.question_answer == self.researcher.correct: self.completed.add(self.active)
+            self.answer_question(event.key - pygame.K_1)
         elif self.state in ("result", "timeout") and event.key in (pygame.K_RETURN, pygame.K_SPACE): self.state = "select"
 
     def background(self, mode="facade"):
@@ -163,6 +211,21 @@ class Game:
             if scale != 1: image = pygame.transform.smoothscale(image, (int(128 * scale), int(128 * scale)))
             self.canvas.blit(image, image.get_rect(midbottom=(x, y)))
 
+    def bubble(self, x, y, content, *, width=330):
+        x = max(width // 2 + 14, min(WIDTH - width // 2 - 14, x))
+        panel(self.canvas, pygame.Rect(x - width // 2, y, width, 66), (250, 249, 236), 13)
+        pygame.draw.polygon(self.canvas, (250, 249, 236), [(x - 16, y + 66), (x + 6, y + 66), (x - 4, y + 80)])
+        text(self.canvas, content, 15, INK, x, y + 12, center=True, max_width=width - 28)
+
+    def draw_hotspot(self, position, label, index):
+        x, y = position; pulse = int(5 * math.sin(pygame.time.get_ticks() / 160 + index))
+        pygame.draw.circle(self.canvas, (255, 239, 117), (x, y), 37 + pulse)
+        panel(self.canvas, pygame.Rect(x - 26, y - 26, 52, 52), (26, 80, 70), 13)
+        pygame.draw.circle(self.canvas, self.researcher.color, (x, y), 18)
+        text(self.canvas, "!", 24, WHITE, x, y - 14, center=True, bold=True)
+        panel(self.canvas, pygame.Rect(x - 70, y - 63, 140, 28), (3, 39, 42, 230), 9)
+        text(self.canvas, label.upper(), 14, WHITE, x, y - 58, center=True, bold=True)
+
     def footer(self, label):
         panel(self.canvas, pygame.Rect(245, 674, 790, 32), (2, 30, 33, 225), 10); text(self.canvas, label, 14, WHITE, 640, 682, center=True, bold=True)
 
@@ -171,27 +234,30 @@ class Game:
         text(self.canvas, "PESQUISADORAS", 62, WHITE, 640, 175, center=True, bold=True); text(self.canvas, "EM AÇÃO", 62, GOLD, 640, 245, center=True, bold=True)
         text(self.canvas, "Explore o campus, encontre pistas e faça ciência acontecer.", 25, WHITE, 640, 338, center=True); text(self.canvas, "Cada missão dura até 3 minutos e tem um desafio de conhecimento no final.", 19, (214, 235, 221), 640, 385, center=True)
         for i, researcher in enumerate(RESEARCHERS): self.avatar(285 + i * 235, 505, researcher, scale=.78)
-        self.footer("ENTER: ESCOLHER UMA PESQUISADORA")
+        self.footer("CLIQUE OU ENTER: ESCOLHER UMA PESQUISADORA")
 
     def draw_select(self):
         panel(self.canvas, pygame.Rect(72, 92, 1136, 535), PANEL, 26); text(self.canvas, "ESCOLHA SUA MISSÃO", 34, WHITE, 640, 130, center=True, bold=True); text(self.canvas, "Todas podem ser jogadas em qualquer ordem.", 18, (215, 238, 223), 640, 177, center=True)
         for i, r in enumerate(RESEARCHERS):
             x, selected = 115 + i * 275, i == self.selection; panel(self.canvas, pygame.Rect(x, 232, 240, 290), r.color if selected else (38, 76, 77), 20); self.avatar(x + 120, 353, r, scale=.88)
             text(self.canvas, r.name.upper(), 20, INK if selected else WHITE, x + 120, 390, center=True, bold=True); text(self.canvas, r.area, 15, INK if selected else (220, 239, 219), x + 120, 426, center=True, max_width=195); text(self.canvas, "✓ CONCLUÍDA" if i in self.completed else "3 MINUTOS", 14, INK if selected else GOLD, x + 120, 487, center=True, bold=True)
-        self.footer("← → ou 1–4: ESCOLHER  |  ENTER: INICIAR")
+        self.footer("CLIQUE EM UMA PESQUISADORA  |  OU USE ← → E ENTER")
 
     def draw_hud(self):
         panel(self.canvas, pygame.Rect(20, 18, 1240, 58), PANEL, 16); text(self.canvas, "PESQUISADORAS EM AÇÃO", 23, WHITE, 42, 33, bold=True); text(self.canvas, self.researcher.name.upper(), 19, self.researcher.color, 540, 35, bold=True)
         minutes, seconds = divmod(int(math.ceil(self.seconds)), 60); text(self.canvas, f"TEMPO  {minutes}:{seconds:02d}", 21, GOLD, 1065, 33, bold=True)
 
     def draw_play(self):
-        self.draw_hud(); text(self.canvas, self.researcher.place.upper(), 26, WHITE, 640, 100, center=True, bold=True); text(self.canvas, self.researcher.goal, 18, INK, 640, 138, center=True, max_width=860)
+        self.draw_hud(); panel(self.canvas, pygame.Rect(180, 84, 920, 73), (3, 39, 42, 218), 14)
+        text(self.canvas, self.researcher.place.upper(), 24, WHITE, 640, 94, center=True, bold=True); text(self.canvas, self.researcher.goal, 16, (223, 242, 224), 640, 126, center=True, max_width=850)
         for index, (pos, point) in enumerate(zip(self.hotspot_positions(), self.researcher.points)):
-            if index not in self.collected:
-                pygame.draw.circle(self.canvas, (255, 244, 173), pos, int(28 + 5 * math.sin(pygame.time.get_ticks() / 160 + index))); pygame.draw.circle(self.canvas, self.researcher.color, pos, 20); text(self.canvas, point[0], 16, WHITE, pos[0], pos[1] - 50, center=True, bold=True)
+            if index not in self.collected: self.draw_hotspot(pos, point[0], index)
         k = pygame.key.get_pressed(); self.avatar(int(self.player.x), int(self.player.y), self.researcher, walking=int(k[pygame.K_d] or k[pygame.K_RIGHT]) - int(k[pygame.K_a] or k[pygame.K_LEFT]))
-        panel(self.canvas, pygame.Rect(28, 650, 330, 42), (3, 35, 38, 224), 12); text(self.canvas, f"PISTAS {len(self.collected)}/{len(self.researcher.points)}", 16, WHITE, 47, 662, bold=True); self.footer("WASD / SETAS: MOVER  |  E: INTERAGIR")
-        if self.notice_time: panel(self.canvas, pygame.Rect(210, 534, 860, 86), (250, 248, 231), 16); text(self.canvas, self.notice, 18, INK, 640, 551, center=True, max_width=790)
+        panel(self.canvas, pygame.Rect(28, 650, 330, 42), (3, 35, 38, 224), 12); text(self.canvas, f"PISTAS {len(self.collected)}/{len(self.researcher.points)}", 16, WHITE, 47, 662, bold=True); self.footer("WASD / SETAS: MOVER  |  E: INVESTIGAR  |  CLIQUE: SELECIONAR")
+        closest = self.nearest_hotspot()
+        if self.notice_time: self.bubble(int(self.player.x), int(self.player.y) - 175, self.notice, width=420)
+        elif closest and self.player.distance_to(closest[1]) < 155: self.bubble(int(self.player.x), int(self.player.y) - 175, f"Vamos investigar {closest[2][0]}. Aperte E!", width=330)
+        elif not self.collected: self.bubble(int(self.player.x), int(self.player.y) - 175, "Siga os marcadores com ! amarelo.", width=300)
         if len(self.collected) == len(self.researcher.points): text(self.canvas, "PISTAS REUNIDAS — APERTE E PARA O DESAFIO", 17, GOLD, 640, 615, center=True, bold=True)
 
     def draw_question(self):

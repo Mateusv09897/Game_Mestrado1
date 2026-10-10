@@ -1,0 +1,6 @@
+Coloque aqui a trilha sonora do jogo.
+
+Nome recomendado: trilha.ogg
+Também funcionam: trilha.mp3 ou trilha.wav
+
+Ao abrir o jogo, a música será reproduzida em loop com volume moderado.

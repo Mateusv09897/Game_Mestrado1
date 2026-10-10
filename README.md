@@ -38,6 +38,10 @@ python main.py
 3. Depois de recolher todas, aperte `E` para abrir o desafio final.
 4. Responda corretamente para marcar a missão como concluída.
 
+## Trilha sonora
+
+Depois de gerar a música, salve-a como `assets/music/trilha.ogg` (formato recomendado). O jogo toca automaticamente `trilha.ogg`, `trilha.mp3` ou `trilha.wav` em loop.
+
 ## Créditos e uso dos assets
 
 Os sprites de cada pesquisadora são os arquivos aprovados e disponibilizados pela equipe na pasta do projeto. O cenário e a interface são originais; o jogo não reproduz assets, personagens ou interface de outros jogos.
