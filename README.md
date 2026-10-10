@@ -28,6 +28,7 @@ python main.py
 | Movimentar personagem | `WASD` ou setas |
 | Interagir com uma pista | `E` |
 | Responder desafio | `1`, `2` ou `3` |
+| Pausar/retomar a música | `M` |
 | Voltar ao menu | `Esc` |
 | Tela cheia | `F11` |
 
@@ -38,6 +39,8 @@ python main.py
 3. Depois de recolher todas, aperte `E` para abrir o minidesafio da pesquisadora.
 4. Conclua a associação de pistas (ou a sequência de ritmo e código da Deuzilene).
 5. Responda ao desafio final para marcar a missão como concluída.
+
+As ações dos sprites também participam da experiência: Lucilene rega a horta e faz as plantas crescerem; Ana Cláudia e Francisca consultam o mapa antes da rota final; Deuzilene dança no desafio de ritmo.
 
 ## Trilha sonora
 

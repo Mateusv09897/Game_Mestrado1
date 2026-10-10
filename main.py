@@ -64,6 +64,8 @@ def panel(surface, rect, color=PANEL, radius=18):
 
 class Game:
     def __init__(self):
+        # Inicialização explícita evita que a trilha fique silenciosa em alguns PCs Windows.
+        pygame.mixer.pre_init(44100, -16, 2, 1024)
         pygame.init(); pygame.display.set_caption("Pesquisadoras em Ação — IFAM")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
         self.canvas, self.clock = pygame.Surface((WIDTH, HEIGHT)), pygame.time.Clock()
@@ -75,6 +77,7 @@ class Game:
         self.rhythm_sequence = (pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT, pygame.K_UP, pygame.K_RIGHT, pygame.K_LEFT)
         self.animations, self.backgrounds = self.load_animations(), self.load_backgrounds()
         self.action_sprites, self.action_name, self.action_time = self.load_action_sprites(), None, 0.0
+        self.pending_minigame, self.music_loaded, self.music_paused, self.music_error = False, False, False, ""
         self.load_music()
 
     def load_animations(self):
@@ -109,17 +112,30 @@ class Game:
         return actions
 
     def load_music(self):
-        """Toca uma trilha opcional quando o arquivo for adicionado ao projeto."""
+        """Carrega a trilha e mantém um status para o controle M."""
+        self.music_loaded, self.music_error = False, ""
         for filename in ("trilha.ogg", "trilha.mp3", "trilha.wav"):
             path = os.path.join(os.path.dirname(__file__), "assets", "music", filename)
             if os.path.exists(path):
                 try:
+                    if not pygame.mixer.get_init(): pygame.mixer.init(44100, -16, 2, 1024)
                     pygame.mixer.music.load(path)
-                    pygame.mixer.music.set_volume(0.32)
-                    pygame.mixer.music.play(-1)
-                except pygame.error:
-                    pass
+                    pygame.mixer.music.set_volume(0.58)
+                    pygame.mixer.music.play(-1, fade_ms=700)
+                    self.music_loaded, self.music_paused = True, False
+                except pygame.error as error:
+                    self.music_error = str(error)
                 return
+
+    def toggle_music(self):
+        if not self.music_loaded:
+            self.load_music()
+            self.show_notice("Trilha iniciada." if self.music_loaded else "Não foi possível iniciar a trilha.")
+            return
+        if self.music_paused:
+            pygame.mixer.music.unpause(); self.music_paused = False; self.show_notice("Trilha ativada.")
+        else:
+            pygame.mixer.music.pause(); self.music_paused = True; self.show_notice("Trilha pausada.")
 
     @property
     def researcher(self): return RESEARCHERS[self.active]
@@ -129,6 +145,7 @@ class Game:
         self.collected, self.question_answer, self.notice, self.notice_time, self.seconds, self.anim_frame = set(), None, "", 0.0, 180.0, 0
         self.mini_selected, self.mini_matched, self.mini_progress = None, set(), 0
         self.action_name, self.action_time = None, 0.0
+        self.pending_minigame = False
 
     def hotspot_positions(self):
         return [(265, 355), (460, 250), (640, 420), (825, 260), (1035, 365)] if len(self.researcher.points) == 5 else [(290, 355), (650, 270), (1015, 385)]
@@ -159,7 +176,12 @@ class Game:
                 self.collected.add(index); self.show_notice(f"{item[0]}: {item[1]}")
                 if self.researcher.key == "lucilene": self.play_action("water", 1.1)
                 return
-        if len(self.collected) == len(self.researcher.points): self.state = "minigame"
+        if len(self.collected) == len(self.researcher.points):
+            map_action = {"ana_claudia": "map_ana", "maria_francisca": "map_francisca"}.get(self.researcher.key)
+            if map_action:
+                self.show_notice("Agora consulte o mapa para definir a próxima rota.")
+                self.play_action(map_action, 1.25); self.pending_minigame = True
+            else: self.state = "minigame"
         else: self.show_notice("Aproxime-se de um ponto brilhante e aperte E.")
 
     def mini_pairs(self):
@@ -207,7 +229,9 @@ class Game:
         if not self.seconds: self.state = "timeout"; return
         if self.action_time:
             self.action_time = max(0, self.action_time - dt)
-            if not self.action_time: self.action_name = None
+            if not self.action_time:
+                self.action_name = None
+                if self.pending_minigame: self.pending_minigame, self.state = False, "minigame"
             return
         k = pygame.key.get_pressed(); direction = pygame.Vector2(int(k[pygame.K_d] or k[pygame.K_RIGHT]) - int(k[pygame.K_a] or k[pygame.K_LEFT]), int(k[pygame.K_s] or k[pygame.K_DOWN]) - int(k[pygame.K_w] or k[pygame.K_UP]))
         if direction.length_squared():
@@ -247,6 +271,8 @@ class Game:
             if self.state in ("play", "minigame", "question", "timeout", "result"): self.state = "select"
             else: self.running = False
             return
+        if event.key == pygame.K_m:
+            self.toggle_music(); return
         if self.state == "title" and event.key in (pygame.K_RETURN, pygame.K_SPACE): self.state = "select"
         elif self.state == "select":
             if event.key in (pygame.K_LEFT, pygame.K_a): self.selection = (self.selection - 1) % 4
@@ -386,17 +412,19 @@ class Game:
         text(self.canvas, "PESQUISADORAS", 62, WHITE, 640, 175, center=True, bold=True); text(self.canvas, "EM AÇÃO", 62, GOLD, 640, 245, center=True, bold=True)
         text(self.canvas, "Explore o campus, encontre pistas e faça ciência acontecer.", 25, WHITE, 640, 338, center=True); text(self.canvas, "Cada missão dura até 3 minutos e tem um desafio de conhecimento no final.", 19, (214, 235, 221), 640, 385, center=True)
         for i, researcher in enumerate(RESEARCHERS): self.avatar(285 + i * 235, 505, researcher, scale=.78)
-        self.footer("CLIQUE OU ENTER: ESCOLHER UMA PESQUISADORA")
+        self.footer("CLIQUE OU ENTER: ESCOLHER UMA PESQUISADORA  |  M: MÚSICA")
 
     def draw_select(self):
         panel(self.canvas, pygame.Rect(72, 92, 1136, 535), PANEL, 26); text(self.canvas, "ESCOLHA SUA MISSÃO", 34, WHITE, 640, 130, center=True, bold=True); text(self.canvas, "Todas podem ser jogadas em qualquer ordem.", 18, (215, 238, 223), 640, 177, center=True)
         for i, r in enumerate(RESEARCHERS):
             x, selected = 115 + i * 275, i == self.selection; panel(self.canvas, pygame.Rect(x, 232, 240, 290), r.color if selected else (38, 76, 77), 20); self.avatar(x + 120, 353, r, scale=.88)
             text(self.canvas, r.name.upper(), 20, INK if selected else WHITE, x + 120, 390, center=True, bold=True); text(self.canvas, r.area, 15, INK if selected else (220, 239, 219), x + 120, 426, center=True, max_width=195); text(self.canvas, "✓ CONCLUÍDA" if i in self.completed else "3 MINUTOS", 14, INK if selected else GOLD, x + 120, 487, center=True, bold=True)
-        self.footer("CLIQUE EM UMA PESQUISADORA  |  OU USE ← → E ENTER")
+        self.footer("CLIQUE EM UMA PESQUISADORA  |  OU USE ← → E ENTER  |  M: MÚSICA")
 
     def draw_hud(self):
         panel(self.canvas, pygame.Rect(20, 18, 1240, 58), PANEL, 16); text(self.canvas, "PESQUISADORAS EM AÇÃO", 23, WHITE, 42, 33, bold=True); text(self.canvas, self.researcher.name.upper(), 19, self.researcher.color, 540, 35, bold=True)
+        music_label = "♫ ON" if self.music_loaded and not self.music_paused else "♫ OFF"
+        text(self.canvas, music_label, 16, LEAF if music_label.endswith("ON") else CORAL, 950, 37, bold=True)
         minutes, seconds = divmod(int(math.ceil(self.seconds)), 60); text(self.canvas, f"TEMPO  {minutes}:{seconds:02d}", 21, GOLD, 1065, 33, bold=True)
 
     def draw_play(self):
@@ -409,7 +437,7 @@ class Game:
         k = pygame.key.get_pressed()
         if self.action_time and self.action_name: self.action_avatar(int(self.player.x), int(self.player.y), self.action_name)
         else: self.avatar(int(self.player.x), int(self.player.y), self.researcher, walking=int(k[pygame.K_d] or k[pygame.K_RIGHT]) - int(k[pygame.K_a] or k[pygame.K_LEFT]))
-        panel(self.canvas, pygame.Rect(28, 650, 330, 42), (3, 35, 38, 224), 12); text(self.canvas, f"PISTAS {len(self.collected)}/{len(self.researcher.points)}", 16, WHITE, 47, 662, bold=True); self.footer("WASD / SETAS: MOVER  |  E: INVESTIGAR  |  CLIQUE: SELECIONAR")
+        panel(self.canvas, pygame.Rect(28, 650, 330, 42), (3, 35, 38, 224), 12); text(self.canvas, f"PISTAS {len(self.collected)}/{len(self.researcher.points)}", 16, WHITE, 47, 662, bold=True); self.footer("WASD / SETAS: MOVER  |  E: AGIR  |  M: MÚSICA  |  CLIQUE: SELECIONAR")
         closest = self.nearest_hotspot()
         if self.notice_time: self.bubble(int(self.player.x), int(self.player.y) - 175, self.notice, width=420)
         elif closest and self.player.distance_to(closest[1]) < 155: self.bubble(int(self.player.x), int(self.player.y) - 175, f"Vamos investigar {closest[2][0]}. Aperte E!", width=330)
